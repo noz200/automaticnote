@@ -2,36 +2,29 @@
 
 ## 基本方針
 
-- **GitHub Flow + develop ブランチ** のハイブリッド運用
-- `main` は常にデプロイ可能
-- 日々の統合は `develop` に集約
+- `main` から作業ブランチを1本切って作業する
+- 途中で別ブランチを切らない
+- 作業ブランチではコミットを積み、最終的に `main` へPRでマージする
 
 ## ブランチ種別
 
 - `main`
-  - 本番相当ブランチ
-  - 直接 push しない
-- `develop`
-  - 開発統合ブランチ
-  - feature 完了後のマージ先
-- `feature/<topic>`
-  - 新機能開発
-  - 例: `feature/note-draft-generator`
-- `fix/<topic>`
-  - バグ修正
-- `chore/<topic>`
-  - 依存更新・CI・ドキュメント調整
+  - 常に安定状態
+  - 直接pushしない
+- `feature/<topic>` または `fix/<topic>`
+  - 作業用ブランチ
+  - 1テーマにつき1本
 
 ## 運用ルール
 
-1. `develop` から作業ブランチを切る
-2. 小さな単位でコミットする
-3. PR を作成しレビューを受ける
-4. CI 緑を確認してマージ
-5. リリース時に `develop -> main` を PR で反映
+1. `main` 最新化後に作業ブランチを作成
+2. そのブランチ内でのみコミットを積む
+3. 追加で派生ブランチを作らない
+4. PRを作成して `main` へマージ
+5. マージ後に作業ブランチを削除
 
 ## コミットメッセージ例
 
-- `feat: add note draft command scaffold`
-- `fix: handle missing NOTE_API_TOKEN`
-- `docs: add branch strategy`
+- `feat: add title ranking logic`
+- `fix: repair pytest import path`
+- `docs: simplify branch strategy`
