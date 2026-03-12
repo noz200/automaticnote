@@ -1,62 +1,39 @@
 # automaticnote
 
-最新ニュースを収集し、関心が高そうなタイトルを選び、記事を生成し、noteへ投稿する自動化ツールです。
+最新ニュースを収集し、関心が高そうなタイトルを選び、記事を生成して note 投稿までつなぐ自動化スクリプトです。
 
-## すぐ実行する（仮想環境なしでも開始可）
+## 実装方針（今回のおすすめ）
 
-```bash
-bash scripts_setup.sh
-source .venv/bin/activate
-```
+要件にあった3パターンを比較した結果、**既存ログインセッションをPlaywrightで再利用**する設計を標準にしました。
 
-この時点で **ニュース収集 + 記事生成 + Markdown保存** は動きます。
+- `manual`: 記事生成 + Markdown保存のみ（投稿は手動）
+- `playwright_existing_session` (**推奨/デフォルト**): すでにログイン済みの `note` セッションを使って下書き入力
+- `playwright_login`: メール/パスワードで自動ログインして投稿
 
-## MCPは使ってる？
+理由:
+- セキュリティ上、アカウントID/PWを保存しない運用が可能
+- 2FAやログイン画面変更に強い
+- まずは下書きまで自動化し、公開は手動にすることで誤投稿リスクを下げられる
+`note` 投稿作業を自動化するための土台リポジトリです。  
+まずは **安全に育てられる最小構成** と **ブランチ運用ルール** を用意しています。
 
-使えます。`MCP_NEWS_JSON` を指定すると、MCPで集めたニュースJSONを入力として利用します。
+## 何が入っているか
 
-- RSS利用（標準）: `MCP_NEWS_JSON` 未指定
-- MCP利用: `MCP_NEWS_JSON=./mcp_news.json`
+- Python パッケージの最小実装（`src/automaticnote`）
+- CLI エントリポイント（`automaticnote`）
+- 環境変数ベースの設定ローダ
+- ブランチ戦略ドキュメント（`docs/branch-strategy.md`）
 
-JSON形式:
-
-```json
-[
-  {
-    "title": "ニュースタイトル",
-    "url": "https://example.com",
-    "source": "mcp-source",
-    "published": "2026-01-01T00:00:00+00:00"
-  }
-]
-```
-
-## 実行方法
-
-### 1) まず動作確認（投稿なし）
+## セットアップ
 
 ```bash
+python -m venv .venv
 source .venv/bin/activate
-export OPENAI_API_KEY=...
-python src/auto_note_pipeline.py --mode manual
+pip install -r requirements.txt
+playwright install chromium
 ```
 
-### 2) 完全自動投稿（ログイン→作成→公開）
-
-> Playwrightインストールが必要です（ネットワーク許可時）
-
-```bash
-source .venv/bin/activate
-pip install playwright
-python -m playwright install chromium
-
-export OPENAI_API_KEY=...
-export NOTE_EMAIL=...
-export NOTE_PASSWORD=...
-python src/auto_note_pipeline.py --mode playwright_login --fully-auto
-```
-
-## 環境変数
+`.env` 例:
 
 ```env
 OPENAI_API_KEY=...
@@ -64,19 +41,56 @@ OPENAI_MODEL=gpt-4.1-mini
 OUTPUT_DIR=output
 NEWS_PER_FEED=20
 
-# MCPニュースを使う場合のみ指定
-MCP_NEWS_JSON=./mcp_news.json
-
-# 投稿関連
+# existing_session モードで利用（任意）
 NOTE_USER_DATA_DIR=.note_profile
-NOTE_LOGIN_TMP_PROFILE=.note_profile_tmp
+
+# playwright_login モードで利用
 NOTE_EMAIL=you@example.com
 NOTE_PASSWORD=your-password
+
+# trueで公開ボタンまで押す（デフォルトfalse）
 NOTE_AUTO_PUBLISH=false
-PLAYWRIGHT_HEADLESS=true
 ```
+
+## 実行
+
+```bash
+python src/auto_note_pipeline.py --mode playwright_existing_session
+```
+
+初回は `.note_profile` にブラウザプロフィールが作られます。必要なら手動でログインしてセッションを保持してください。
+
+## パイプライン
+
+1. RSSから最新記事を収集
+2. タイトルをトレンドキーワード・新しさ・読みやすさでスコアリング
+3. OpenAIで本文生成
+4. Markdown保存
+5. noteの投稿フォームへ自動入力（モードに応じてログイン制御）
 
 ## 注意
 
 - noteのUI変更でセレクタが変わる可能性があります。
-- 完全自動公開はテストアカウントで検証してから本番運用してください。
+- 自動公開 (`NOTE_AUTO_PUBLISH=true`) は十分に検証してから使ってください。
+pip install -e .
+```
+
+## 使い方（現時点）
+
+```bash
+automaticnote healthcheck
+```
+
+API 接続はまだ未実装ですが、`NOTE_API_BASE_URL` と `NOTE_API_TOKEN` の読み込みと検証は実装済みです。
+
+## ブランチ管理
+
+ブランチ運用の詳細は以下を参照してください。
+
+- [docs/branch-strategy.md](docs/branch-strategy.md)
+
+要点:
+
+- `main`: 常にリリース可能な状態
+- `develop`: 開発統合ブランチ
+- `feature/*`, `fix/*`, `chore/*`: 短命ブランチで PR ベース開発
