@@ -10,6 +10,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Iterable
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 DEFAULT_FEEDS = [
     "https://www.itmedia.co.jp/news/rss/2.0/news_bursts.xml",
     "https://gigazine.net/news/rss_2.0/",
@@ -109,21 +113,8 @@ class ArticleGenerator:
     def __init__(self, model: str = "gpt-4.1-mini") -> None:
         from openai import OpenAI
 
-        self.client = self._create_client(OpenAI)
+        self.client = OpenAI()  # .envから自動取得
         self.model = model
-
-    @staticmethod
-    def _create_client(openai_cls: type) -> object:
-        api_key = os.environ.get("OPENAI_API_KEY")
-        try:
-            return openai_cls(api_key=api_key)
-        except TypeError as exc:
-            if "proxies" not in str(exc):
-                raise
-            import httpx
-
-            print("[WARN] openai/httpx互換性問題を検出したため、互換モードで初期化します。")
-            return openai_cls(api_key=api_key, http_client=httpx.Client())
 
     def generate(self, item: NewsItem) -> tuple[str, str]:
         prompt = (

@@ -70,3 +70,25 @@ automaticnote healthcheck
 運用ルールは以下を参照してください。
 
 - [docs/branch-strategy.md](docs/branch-strategy.md)
+
+## Windowsで仮想環境と依存インストール
+
+1. Git BashやPowerShellで scripts_setup.sh を実行
+
+   ```bash
+   ./scripts_setup.sh
+   ```
+   または
+   ```powershell
+   bash scripts_setup.sh
+   ```
+
+2. 仮想環境をアクティベート（cmdの場合）
+   ```cmd
+   .venv\Scripts\activate.bat
+   ```
+
+3. 実行例
+   ```bash
+   python src/auto_note_pipeline.py --mode playwright_existing_session
+   ```
