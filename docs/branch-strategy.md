@@ -23,6 +23,25 @@
 4. PRを作成して `main` へマージ
 5. マージ後に作業ブランチを削除
 
+## origin / upstream 整理ルール
+
+- 基本運用は **`origin` を唯一の push 先** とする
+- `upstream` が必要な構成（fork 運用）のときのみ `upstream` を残す
+- fork 運用でない場合は `upstream` を削除して混在を解消する
+
+### 推奨コマンド
+
+```bash
+# 現在の remote 状況確認
+git remote -v
+
+# upstream が不要なら削除
+git remote remove upstream
+
+# デフォルトブランチを origin/main に追従
+git branch --set-upstream-to=origin/main main
+```
+
 ## コミットメッセージ例
 
 - `feat: add title ranking logic`
