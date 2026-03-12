@@ -109,8 +109,21 @@ class ArticleGenerator:
     def __init__(self, model: str = "gpt-4.1-mini") -> None:
         from openai import OpenAI
 
-        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        self.client = self._create_client(OpenAI)
         self.model = model
+
+    @staticmethod
+    def _create_client(openai_cls: type) -> object:
+        api_key = os.environ.get("OPENAI_API_KEY")
+        try:
+            return openai_cls(api_key=api_key)
+        except TypeError as exc:
+            if "proxies" not in str(exc):
+                raise
+            import httpx
+
+            print("[WARN] openai/httpx互換性問題を検出したため、互換モードで初期化します。")
+            return openai_cls(api_key=api_key, http_client=httpx.Client())
 
     def generate(self, item: NewsItem) -> tuple[str, str]:
         prompt = (
