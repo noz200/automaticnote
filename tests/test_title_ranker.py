@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from src.auto_note_pipeline import NewsItem, TitleRanker
+from auto_note_pipeline import NewsItem, TitleRanker
 
 
 def test_keyword_and_recency_scoring_prefers_recent_ai_news():

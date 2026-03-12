@@ -1,28 +1,18 @@
 # automaticnote
 
-最新ニュースを収集し、関心が高そうなタイトルを選び、記事を生成して note 投稿までつなぐ自動化スクリプトです。
+最新ニュースを収集し、関心が高そうな話題を選び、記事下書きを生成して note 投稿までつなぐ自動化スクリプトです。
 
-## 実装方針（今回のおすすめ）
-
-要件にあった3パターンを比較した結果、**既存ログインセッションをPlaywrightで再利用**する設計を標準にしました。
+## 投稿モード
 
 - `manual`: 記事生成 + Markdown保存のみ（投稿は手動）
-- `playwright_existing_session` (**推奨/デフォルト**): すでにログイン済みの `note` セッションを使って下書き入力
-- `playwright_login`: メール/パスワードで自動ログインして投稿
+- `playwright_existing_session` (**推奨/デフォルト**): 既存ログインセッションを再利用して下書き入力
+- `playwright_login`: メール/パスワードでログインして投稿
 
-理由:
-- セキュリティ上、アカウントID/PWを保存しない運用が可能
-- 2FAやログイン画面変更に強い
-- まずは下書きまで自動化し、公開は手動にすることで誤投稿リスクを下げられる
-`note` 投稿作業を自動化するための土台リポジトリです。  
-まずは **安全に育てられる最小構成** と **ブランチ運用ルール** を用意しています。
+`playwright_existing_session` を標準にする理由:
 
-## 何が入っているか
-
-- Python パッケージの最小実装（`src/automaticnote`）
-- CLI エントリポイント（`automaticnote`）
-- 環境変数ベースの設定ローダ
-- ブランチ戦略ドキュメント（`docs/branch-strategy.md`）
+- アカウントID/PWを保存しない運用が可能
+- 2FAやログイン画面変更の影響を受けにくい
+- まず下書きまで自動化し、公開は手動にして誤投稿リスクを下げられる
 
 ## セットアップ
 
@@ -58,39 +48,25 @@ NOTE_AUTO_PUBLISH=false
 python src/auto_note_pipeline.py --mode playwright_existing_session
 ```
 
-初回は `.note_profile` にブラウザプロフィールが作られます。必要なら手動でログインしてセッションを保持してください。
-
 ## パイプライン
 
 1. RSSから最新記事を収集
 2. タイトルをトレンドキーワード・新しさ・読みやすさでスコアリング
 3. OpenAIで本文生成
 4. Markdown保存
-5. noteの投稿フォームへ自動入力（モードに応じてログイン制御）
+5. noteの投稿フォームへ自動入力
 
-## 注意
-
-- noteのUI変更でセレクタが変わる可能性があります。
-- 自動公開 (`NOTE_AUTO_PUBLISH=true`) は十分に検証してから使ってください。
-pip install -e .
-```
-
-## 使い方（現時点）
+## CLI（最小実装）
 
 ```bash
+pip install -e .
 automaticnote healthcheck
 ```
 
-API 接続はまだ未実装ですが、`NOTE_API_BASE_URL` と `NOTE_API_TOKEN` の読み込みと検証は実装済みです。
+`healthcheck` では `NOTE_API_BASE_URL` と `NOTE_API_TOKEN` の読み込み・検証を行います。
 
 ## ブランチ管理
 
-ブランチ運用の詳細は以下を参照してください。
+運用ルールは以下を参照してください。
 
 - [docs/branch-strategy.md](docs/branch-strategy.md)
-
-要点:
-
-- `main`: 常にリリース可能な状態
-- `develop`: 開発統合ブランチ
-- `feature/*`, `fix/*`, `chore/*`: 短命ブランチで PR ベース開発
