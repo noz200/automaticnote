@@ -60,6 +60,15 @@ class PipelineResult:
     markdown_path: Path
 
 
+def build_demo_news_item() -> NewsItem:
+    return NewsItem(
+        title="生成AI活用の最新動向をローカル検証する",
+        url="https://example.com/local-demo",
+        published=datetime.now(timezone.utc),
+        source="local-demo",
+    )
+
+
 class NewsCollector:
     def __init__(self, feeds: Iterable[str] | None = None) -> None:
         self.feeds = list(feeds or DEFAULT_FEEDS)
@@ -110,11 +119,28 @@ class TitleRanker:
 
 
 class ArticleGenerator:
+    @staticmethod
+    def _create_client(openai_cls):
+        api_key = os.environ.get("OPENAI_API_KEY")
+        try:
+            return openai_cls(api_key=api_key)
+        except TypeError:
+            import httpx
+
+            http_client = httpx.Client(trust_env=False)
+            return openai_cls(api_key=api_key, http_client=http_client)
+
     def __init__(self, model: str = "gpt-4.1-mini") -> None:
+        self.model = model
+        self.mock_openai = os.environ.get("AUTOMATICNOTE_MOCK_OPENAI", "false").lower() == "true"
+
+        if self.mock_openai:
+            self.client = None
+            return
+
         from openai import OpenAI
 
-        self.client = OpenAI()  # .envから自動取得
-        self.model = model
+        self.client = self._create_client(OpenAI)
 
     def generate(self, item: NewsItem) -> tuple[str, str]:
         prompt = (
@@ -130,12 +156,40 @@ class ArticleGenerator:
             f"元URL: {item.url}\n"
             f"配信元: {item.source}\n"
         )
-        response = self.client.responses.create(
-            model=self.model,
-            input=prompt,
-            temperature=0.7,
-        )
-        body = response.output_text.strip()
+        if self.mock_openai:
+            body = (
+                "## 何が起きたか\n"
+                f"{item.source} の記事『{item.title}』を題材に、ローカル検証用の下書きを生成しました。\n\n"
+                "## 事実\n"
+                f"- 記事タイトル: {item.title}\n"
+                f"- 参照URL: {item.url}\n\n"
+                "## 推測\n"
+                "- 本番では OpenAI API から内容を生成します。\n"
+                "- この文章は API 未接続時のモック出力です。\n\n"
+                "## 要点3つ\n"
+                "1. ローカルでエンドツーエンド実行確認ができる\n"
+                "2. 依存外部APIなしで Markdown 出力まで確認できる\n"
+                "3. APIキーを設定すれば本番生成に切り替わる\n"
+            )
+            title = f"【ローカル検証】{item.title}"
+            return title, body
+
+        if hasattr(self.client, "responses"):
+            response = self.client.responses.create(
+                model=self.model,
+                input=prompt,
+                temperature=0.7,
+            )
+            body = response.output_text.strip()
+        else:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+            )
+            body = response.choices[0].message.content.strip()
         title = f"【最新解説】{item.title}"
         return title, body
 
@@ -213,8 +267,12 @@ async def run_pipeline(mode: PublishMode) -> PipelineResult:
     generator = ArticleGenerator(model=os.environ.get("OPENAI_MODEL", "gpt-4.1-mini"))
     store = MarkdownStore(output_dir=os.environ.get("OUTPUT_DIR", "output"))
 
-    items = collector.collect(limit_per_feed=int(os.environ.get("NEWS_PER_FEED", "20")))
-    selected = ranker.pick_best(items)
+    use_local_demo = os.environ.get("AUTOMATICNOTE_LOCAL_DEMO", "false").lower() == "true"
+    if use_local_demo:
+        selected = build_demo_news_item()
+    else:
+        items = collector.collect(limit_per_feed=int(os.environ.get("NEWS_PER_FEED", "20")))
+        selected = ranker.pick_best(items)
     article_title, article_body = generator.generate(selected)
     markdown_path = store.save(article_title, article_body, selected.url)
 
