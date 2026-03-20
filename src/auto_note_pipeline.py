@@ -12,8 +12,6 @@ from typing import Iterable
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 DEFAULT_FEEDS = [
     "https://www.itmedia.co.jp/news/rss/2.0/news_bursts.xml",
     "https://gigazine.net/news/rss_2.0/",
@@ -58,6 +56,25 @@ class PipelineResult:
     article_title: str
     article_body: str
     markdown_path: Path
+
+
+@dataclass
+class AgentTask:
+    role: str
+    mission: str
+    output_format: str
+
+
+load_dotenv()
+
+
+def build_demo_news_item() -> NewsItem:
+    return NewsItem(
+        title="生成AI活用の最新動向をローカル検証する",
+        url="https://example.com/local-demo",
+        published=datetime.now(timezone.utc),
+        source="local-demo",
+    )
 
 
 class NewsCollector:
@@ -110,32 +127,122 @@ class TitleRanker:
 
 
 class ArticleGenerator:
+    @staticmethod
+    def _create_client(openai_cls):
+        api_key = os.environ.get("OPENAI_API_KEY")
+        try:
+            return openai_cls(api_key=api_key)
+        except TypeError:
+            import httpx
+
+            http_client = httpx.Client(trust_env=False)
+            return openai_cls(api_key=api_key, http_client=http_client)
+
     def __init__(self, model: str = "gpt-4.1-mini") -> None:
+        self.model = model
+        self.mock_openai = os.environ.get("AUTOMATICNOTE_MOCK_OPENAI", "false").lower() == "true"
+
+        if self.mock_openai:
+            self.client = None
+            return
+
         from openai import OpenAI
 
-        self.client = OpenAI()  # .envから自動取得
-        self.model = model
+        self.client = self._create_client(OpenAI)
+
+    @staticmethod
+    def _build_agent_tasks() -> list[AgentTask]:
+        return [
+            AgentTask(
+                role="Market Analyst",
+                mission="ニュースの本質と、読者が誤解しやすいポイントを分解する。",
+                output_format="箇条書きで論点整理",
+            ),
+            AgentTask(
+                role="Opportunity Designer",
+                mission="読者の未来が前向きに変わる可能性、具体的な行動、狙うべき細分化市場を示す。",
+                output_format="現実的な打ち手を3〜5個",
+            ),
+            AgentTask(
+                role="Note Writer",
+                mission="伴走者として、煽りすぎず、それでも未来が変わる感のある note 記事にまとめる。",
+                output_format="見出し付きの完成原稿",
+            ),
+        ]
+
+    @classmethod
+    def _build_prompt(cls, item: NewsItem) -> str:
+        agent_section = "\n".join(
+            [
+                f"- {task.role}: {task.mission} / 出力形式: {task.output_format}"
+                for task in cls._build_agent_tasks()
+            ]
+        )
+        return (
+            "あなたは note のサブスク記事を作る編集チームです。\n"
+            "記事の目的は、読者に『未来が変わるかもしれない』『自分にも次の一歩がある』と感じさせることです。\n"
+            "ただし、誇大表現・情弱搾取・楽して稼げる系の煽りは禁止です。\n"
+            "『不安を解消する』『伴走する』『具体的な一歩を提示する』ことを優先してください。\n\n"
+            "## 前提\n"
+            "- 日本語\n"
+            "- note向け\n"
+            "- 見出し付き\n"
+            "- 800〜1500文字\n"
+            "- 事実と推測を分ける\n"
+            "- 読者が誤解しやすいポイントを分解する\n"
+            "- 最後に『今日からできる次の一歩』を3つ入れる\n"
+            "- トーンは『少し先を歩く実践者』\n"
+            "- 市場・需要・競争の観点を入れる\n\n"
+            "## 役割分担エージェント\n"
+            f"{agent_section}\n\n"
+            "## 記事で必ず扱う観点\n"
+            "- これは単なる自動化の仕組みなのか、それとも価値のある市場機会なのか\n"
+            "- 稼げる/伸びる本質は『仕組み』ではなく『何を自動化するか』であること\n"
+            "- 競争が激しい領域と、細分化すると勝てる領域の違い\n"
+            "- 読者が次に試すべき、小さく現実的なアクション\n\n"
+            "## 入力ニュース\n"
+            f"- タイトル: {item.title}\n"
+            f"- URL: {item.url}\n"
+            f"- 配信元: {item.source}\n"
+        )
 
     def generate(self, item: NewsItem) -> tuple[str, str]:
-        prompt = (
-            "あなたはIT系note編集者です。\n"
-            "次のニュースを題材に、読者が理解しやすく行動につながる記事を作ってください。\n"
-            "条件:\n"
-            "- 日本語\n"
-            "- 見出し付き\n"
-            "- 600〜1000文字\n"
-            "- 事実と推測を分ける\n"
-            "- 最後に要点3つ\n"
-            f"ニュースタイトル: {item.title}\n"
-            f"元URL: {item.url}\n"
-            f"配信元: {item.source}\n"
-        )
-        response = self.client.responses.create(
-            model=self.model,
-            input=prompt,
-            temperature=0.7,
-        )
-        body = response.output_text.strip()
+        prompt = self._build_prompt(item)
+        if self.mock_openai:
+            body = (
+                "## このニュースの本質\n"
+                f"{item.source} の記事『{item.title}』は、単なるツール紹介ではなく、"
+                "『何を自動化すると価値になるのか』を考える材料になります。\n\n"
+                "## 誤解しやすいポイント\n"
+                "- 自動化そのものが価値なのではなく、需要のある課題に当てることが重要です。\n"
+                "- 競争の激しい領域では、量産だけでは埋もれます。\n\n"
+                "## 未来が変わる見方\n"
+                "- 読者自身の経験や失敗を、細分化されたニーズに変換すると強みになります。\n"
+                "- 『一歩先を歩く伴走者』として発信すると、継続課金に繋がりやすくなります。\n\n"
+                "## 今日からできる次の一歩\n"
+                "1. 自分が最近ハマった失敗や非効率を3つ書き出す\n"
+                "2. その中で『お金を払ってでも解決したい人がいそうなもの』を1つ選ぶ\n"
+                "3. 小さな検証記事かツール案として形にする\n"
+            )
+            title = f"【ローカル検証】{item.title}"
+            return title, body
+
+        if hasattr(self.client, "responses"):
+            response = self.client.responses.create(
+                model=self.model,
+                input=prompt,
+                temperature=0.7,
+            )
+            body = response.output_text.strip()
+        else:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+            )
+            body = response.choices[0].message.content.strip()
         title = f"【最新解説】{item.title}"
         return title, body
 
@@ -213,8 +320,12 @@ async def run_pipeline(mode: PublishMode) -> PipelineResult:
     generator = ArticleGenerator(model=os.environ.get("OPENAI_MODEL", "gpt-4.1-mini"))
     store = MarkdownStore(output_dir=os.environ.get("OUTPUT_DIR", "output"))
 
-    items = collector.collect(limit_per_feed=int(os.environ.get("NEWS_PER_FEED", "20")))
-    selected = ranker.pick_best(items)
+    use_local_demo = os.environ.get("AUTOMATICNOTE_LOCAL_DEMO", "false").lower() == "true"
+    if use_local_demo:
+        selected = build_demo_news_item()
+    else:
+        items = collector.collect(limit_per_feed=int(os.environ.get("NEWS_PER_FEED", "20")))
+        selected = ranker.pick_best(items)
     article_title, article_body = generator.generate(selected)
     markdown_path = store.save(article_title, article_body, selected.url)
 
